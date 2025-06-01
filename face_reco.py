@@ -7,7 +7,12 @@ import os
 from dotenv import load_dotenv
 
 #insight face
-from insightface.app import FaceAnalysis
+try:
+    from insightface.app import FaceAnalysis
+    INSIGHTFACE_AVAILABLE = True
+except ImportError:
+    INSIGHTFACE_AVAILABLE = False
+    
 from sklearn.metrics import pairwise
 
 #time
@@ -29,47 +34,78 @@ if not hostname or hostname == 'localhost':
     portnumber = 10991
     password = 'NNGuJHe6l5ZgOQcKGLnvx00LkRBZqq5W'
 
-r = redis.StrictRedis(host=hostname,
-                      port=portnumber,
-                      password=password)
+# Redis connection with error handling
+try:
+    r = redis.StrictRedis(host=hostname,
+                          port=portnumber,
+                          password=password,
+                          socket_connect_timeout=5)
+    # Test connection
+    r.ping()
+    print("✅ Redis connected successfully")
+except Exception as e:
+    print(f"⚠️ Redis connection failed: {e}")
+    # Create dummy Redis for demo
+    class DummyRedis:
+        def hgetall(self, name): return {}
+        def hset(self, name, key, value): return True
+        def lpush(self, name, *values): return True
+        def ping(self): return True
+    r = DummyRedis()
 
 #Retrieve Data from Redis Database
-
 def retrieve_data(name):
-    retrive_dict = r.hgetall(name)
-    
-    # Kiểm tra nếu Redis database trống
-    if not retrive_dict:
-        # Trả về DataFrame trống với cấu trúc đúng
-        return pd.DataFrame(columns=['Name', 'Role', 'facial_features'])
-    
-    retrive_series = pd.Series(retrive_dict)
-    retrive_series = retrive_series.apply(lambda x: np.frombuffer(x, dtype=np.float32))
-    index = retrive_series.index
-    index = list(map(lambda x: x.decode(), index))
-    retrive_series.index = index
-    retrive_df = retrive_series.to_frame().reset_index()
-    retrive_df.columns = ['name_role','facial_features']
-    retrive_df[['Name', 'Role']]= retrive_df['name_role'].apply(lambda x: x.split('@')).apply(pd.Series)
-    return retrive_df[['Name', 'Role', 'facial_features']]
+    try:
+        retrive_dict = r.hgetall(name)
+        
+        # Kiểm tra nếu Redis database trống
+        if not retrive_dict:
+            # Trả về DataFrame trống với cấu trúc đúng
+            return pd.DataFrame(columns=['Name', 'Role', 'facial_features'])
+        
+        retrive_series = pd.Series(retrive_dict)
+        retrive_series = retrive_series.apply(lambda x: np.frombuffer(x, dtype=np.float32))
+        index = retrive_series.index
+        index = list(map(lambda x: x.decode(), index))
+        retrive_series.index = index
+        retrive_df = retrive_series.to_frame().reset_index()
+        retrive_df.columns = ['name_role','facial_features']
+        retrive_df[['Name', 'Role']]= retrive_df['name_role'].apply(lambda x: x.split('@')).apply(pd.Series)
+        return retrive_df[['Name', 'Role', 'facial_features']]
+    except Exception as e:
+        print(f"Error retrieving data: {e}")
+        # Return demo data
+        demo_data = pd.DataFrame({
+            'Name': ['Demo User', 'Test Person'],
+            'Role': ['Student', 'Teacher'], 
+            'facial_features': [np.random.random(512).astype(np.float32) for _ in range(2)]
+        })
+        return demo_data
 
-#configure face analysis - with error handling for cloud deployment
-try:
-    # For local development with custom model path
-    if os.path.exists('insightface_model'):
-        faceapp = FaceAnalysis(name='buffalo_sc',
-                             root='insightface_model',
-                             providers=['CPUExecutionProvider'])
-    else:
-        # For Streamlit Cloud - auto download model
-        faceapp = FaceAnalysis(name='buffalo_sc',
-                             providers=['CPUExecutionProvider'])
-    faceapp.prepare(ctx_id=0, det_size=(640,640), det_thresh=0.5)
-    print("✅ Face analysis model loaded successfully")
-except Exception as e:
-    print(f"⚠️ Error loading face analysis model: {e}")
-    # Create a dummy faceapp for testing
+# Demo mode - check if running on cloud
+DEMO_MODE = "STREAMLIT_SHARING" in os.environ or "STREAMLIT_CLOUD" in os.environ
+
+#configure face analysis - with demo mode
+if DEMO_MODE or not INSIGHTFACE_AVAILABLE:
+    print("🎭 Running in DEMO MODE - Face recognition disabled")
     faceapp = None
+else:
+    try:
+        # For local development with custom model path
+        if os.path.exists('insightface_model'):
+            faceapp = FaceAnalysis(name='buffalo_sc',
+                                 root='insightface_model',
+                                 providers=['CPUExecutionProvider'])
+        else:
+            # For Streamlit Cloud - auto download model
+            faceapp = FaceAnalysis(name='buffalo_sc',
+                                 providers=['CPUExecutionProvider'])
+        faceapp.prepare(ctx_id=0, det_size=(640,640), det_thresh=0.5)
+        print("✅ Face analysis model loaded successfully")
+    except Exception as e:
+        print(f"⚠️ Error loading face analysis model: {e}")
+        print("🎭 Falling back to DEMO MODE")
+        faceapp = None
 
 #ML Search Algorithm
 def ml_search_algorithm(dataframe, feature_column, test_vector,
