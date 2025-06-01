@@ -212,6 +212,13 @@ class RegistrationForm:
 
         return frame, embeddings
     
+    def test_new_function(self, name, role):
+        """Completely new function to test without caching issues"""
+        import streamlit as st
+        st.warning("🔍 NEW TEST: This is a brand new function!")
+        st.success("✅ NEW TEST: If you see this, the function works!")
+        return "test_success"
+    
     def save_data_in_redis_db(self,name,role):
         try:
             import streamlit as st

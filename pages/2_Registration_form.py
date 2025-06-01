@@ -75,6 +75,11 @@ if st.button('Submit'):
     st.warning("🔍 DEBUG: Submit button clicked!")
     st.info(f"🔍 DEBUG: Calling save_data_in_redis_db with name='{person_name}', role='{role}'")
     
+    # Test new function first
+    st.info("🔍 DEBUG: Testing new function...")
+    test_result = registration_form.test_new_function(person_name, role)
+    st.info(f"🔍 DEBUG: New function returned: {test_result}")
+    
     return_val = registration_form.save_data_in_redis_db(person_name, role)
     
     st.info(f"🔍 DEBUG: Function returned: {return_val}")
