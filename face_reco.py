@@ -222,44 +222,46 @@ class RegistrationForm:
         else:
             return 'name_false'
         
-        # Virtual File System - Check if we're on cloud
-        def is_cloud():
-            try:
-                with open('test_permissions.tmp', 'w') as f:
-                    f.write('test')
-                os.remove('test_permissions.tmp')
-                return False
-            except:
-                return True
-        
-        # Read embeddings using virtual file system
+        # SMART FALLBACK: Check both file and session_state
         embeddings = None
         
-        if is_cloud():
-            # Cloud: Read from session state (virtual file)
-            if 'virtual_file_content' in st.session_state and len(st.session_state.virtual_file_content) > 0:
-                embeddings = np.array(st.session_state.virtual_file_content)
-                # Clear virtual file after reading
-                del st.session_state.virtual_file_content
-        else:
-            # Local: Read from real file
-            if os.path.isfile('face_embedding.txt'):
+        # Method 1: Try to load from file (original logic)
+        if os.path.isfile('face_embedding.txt'):
+            try:
                 embeddings = np.loadtxt('face_embedding.txt')
-                # Remove real file after reading
+                
+                # Handle case where only one sample exists (1D array)
+                if embeddings.ndim == 1:
+                    embeddings = embeddings.reshape(1, -1)
+                
+                # Take the mean of all embeddings if multiple samples
+                if embeddings.shape[0] > 1:
+                    embeddings = np.mean(embeddings, axis=0)
+                else:
+                    embeddings = embeddings.flatten()
+                
+                # Remove the file after successful load
                 os.remove('face_embedding.txt')
+            except:
+                embeddings = None
         
-        # Process embeddings (same logic for both cloud and local)
+        # Method 2: Fallback to session_state (cloud compatibility)
+        if embeddings is None:
+            import streamlit as st
+            if 'embeddings_list' in st.session_state and len(st.session_state['embeddings_list']) > 0:
+                embeddings_list = st.session_state['embeddings_list']
+                
+                if len(embeddings_list) == 1:
+                    embeddings = embeddings_list[0]
+                else:
+                    # Take mean of multiple samples
+                    embeddings = np.mean(embeddings_list, axis=0)
+                
+                # Clear session state after use
+                st.session_state['embeddings_list'] = []
+        
+        # Final validation
         if embeddings is not None:
-            # Handle case where only one sample exists (1D array)
-            if embeddings.ndim == 1:
-                embeddings = embeddings.reshape(1, -1)
-            
-            # Take the mean of all embeddings if multiple samples
-            if embeddings.shape[0] > 1:
-                embeddings = np.mean(embeddings, axis=0)
-            else:
-                embeddings = embeddings.flatten()
-            
             # Convert embedding into bytes
             embeddings_bytes = embeddings.tobytes()
             

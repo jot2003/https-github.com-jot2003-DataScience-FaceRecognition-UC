@@ -9,72 +9,6 @@ import os
 # st.set_page_config(page_title='Registration Form')
 st.subheader('Registration Form')
 
-# Virtual File System for Streamlit Cloud
-class VirtualFileSystem:
-    @staticmethod
-    def is_cloud():
-        try:
-            with open('test_permissions.tmp', 'w') as f:
-                f.write('test')
-            os.remove('test_permissions.tmp')
-            return False
-        except:
-            return True
-    
-    @staticmethod
-    def write_embedding(embedding):
-        if VirtualFileSystem.is_cloud():
-            # Cloud: Store in session state
-            if 'virtual_file_content' not in st.session_state:
-                st.session_state.virtual_file_content = []
-            st.session_state.virtual_file_content.append(embedding)
-        else:
-            # Local: Use real file
-            with open('face_embedding.txt', mode='ab') as f:
-                np.savetxt(f, embedding)
-    
-    @staticmethod
-    def file_exists():
-        if VirtualFileSystem.is_cloud():
-            return 'virtual_file_content' in st.session_state and len(st.session_state.virtual_file_content) > 0
-        else:
-            return os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0
-    
-    @staticmethod
-    def read_embeddings():
-        if VirtualFileSystem.is_cloud():
-            if 'virtual_file_content' in st.session_state:
-                return np.array(st.session_state.virtual_file_content)
-            return None
-        else:
-            if os.path.isfile('face_embedding.txt'):
-                return np.loadtxt('face_embedding.txt')
-            return None
-    
-    @staticmethod
-    def remove_file():
-        if VirtualFileSystem.is_cloud():
-            if 'virtual_file_content' in st.session_state:
-                del st.session_state.virtual_file_content
-        else:
-            if os.path.exists('face_embedding.txt'):
-                os.remove('face_embedding.txt')
-    
-    @staticmethod
-    def get_sample_count():
-        if VirtualFileSystem.is_cloud():
-            if 'virtual_file_content' in st.session_state:
-                return len(st.session_state.virtual_file_content)
-            return 0
-        else:
-            try:
-                if os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0:
-                    embeddings = np.loadtxt('face_embedding.txt')
-                    return 1 if embeddings.ndim == 1 else embeddings.shape[0]
-                return 0
-            except:
-                return 0
-
 ##init registration form
 registration_form = face_reco.RegistrationForm()
 
@@ -84,79 +18,75 @@ person_name = st.text_input(label='Name',placeholder='First & Last Name')
 role = st.selectbox(label='Select your role', options=('Student',
                                                         'Teacher'))
 
-# Detect if we're on Streamlit Cloud (file system restrictions)
-def is_streamlit_cloud():
-    try:
-        # Try to create a test file
-        with open('test_write_permission.tmp', 'w') as f:
-            f.write('test')
-        os.remove('test_write_permission.tmp')
-        return False  # Local environment - file system works
-    except:
-        return True   # Streamlit Cloud - file system restricted
-
-USE_SESSION_STATE = is_streamlit_cloud()
-
-if USE_SESSION_STATE:
-    st.info("🌐 Running on Streamlit Cloud - using memory-based storage")
-    # Initialize session state for face embeddings
-    if 'face_embeddings' not in st.session_state:
-        st.session_state.face_embeddings = []
-else:
-    st.info("🏠 Running locally - using file-based storage")
-    # Initialize face embedding file if not exists
+# SMART FALLBACK: Initialize both file and session_state
+# Try to create file, if fails use session_state as backup
+try:
     if not os.path.exists('face_embedding.txt'):
-        # Create empty file to ensure it exists
         with open('face_embedding.txt', 'w') as f:
             pass
+    st.session_state['use_file'] = True
+except:
+    # Cloud doesn't support file operations, use session_state
+    st.session_state['use_file'] = False
+    if 'embeddings_list' not in st.session_state:
+        st.session_state['embeddings_list'] = []
 
 #step 2: Collect facial embedding of the person
 def video_callback_func(frame):
     img = frame.to_ndarray(format= 'bgr24') #3d array bgr
     reg_img, embedding = registration_form.get_embedding(img)
-    #two step process
-    #1st step save data into local computer txt or session state
+    
     if embedding is not None:
-        if USE_SESSION_STATE:
-            # Streamlit Cloud - use session state
-            st.session_state.face_embeddings.append(embedding)
+        if st.session_state.get('use_file', True):
+            # Original logic: save to file
+            try:
+                with open('face_embedding.txt', mode='ab') as f:
+                    np.savetxt(f, embedding)
+            except:
+                # File failed, switch to session_state
+                st.session_state['use_file'] = False
+                if 'embeddings_list' not in st.session_state:
+                    st.session_state['embeddings_list'] = []
+                st.session_state['embeddings_list'].append(embedding)
         else:
-            # Local - use file
-            with open('face_embedding.txt', mode='ab') as f:
-                np.savetxt(f, embedding)
+            # Fallback: save to session_state
+            if 'embeddings_list' not in st.session_state:
+                st.session_state['embeddings_list'] = []
+            st.session_state['embeddings_list'].append(embedding)
+    
     return av.VideoFrame.from_ndarray(reg_img, format= 'bgr24')
 
 webrtc_streamer(key='registration', video_frame_callback=video_callback_func,
                 rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
 
-# Display file status
-if USE_SESSION_STATE:
-    # Check session state
-    if 'face_embeddings' in st.session_state and len(st.session_state.face_embeddings) > 0:
-        st.success("✅ Face data captured successfully!")
-        st.info(f"📊 Number of samples collected: {len(st.session_state.face_embeddings)}")
-    else:
-        st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
-else:
+# SMART STATUS: Display status for both file and session_state
+has_data = False
+num_samples = 0
+
+if st.session_state.get('use_file', True):
     # Check file
     if os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0:
-        st.success("✅ Face data captured successfully!")
-        
-        # Show number of samples
+        has_data = True
         try:
             embeddings = np.loadtxt('face_embedding.txt')
-            if embeddings.ndim == 1:
-                num_samples = 1
-            else:
-                num_samples = embeddings.shape[0]
-            st.info(f"📊 Number of samples collected: {num_samples}")
+            num_samples = 1 if embeddings.ndim == 1 else embeddings.shape[0]
         except:
-            st.warning("⚠️ Face embedding file exists but may be empty. Continue capturing faces.")
-    else:
-        st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
+            pass
+else:
+    # Check session_state
+    if 'embeddings_list' in st.session_state and len(st.session_state['embeddings_list']) > 0:
+        has_data = True
+        num_samples = len(st.session_state['embeddings_list'])
+
+if has_data:
+    st.success("✅ Face data captured successfully!")
+    st.info(f"📊 Number of samples collected: {num_samples}")
+    if not st.session_state.get('use_file', True):
+        st.info("🌐 Using cloud-compatible mode (session storage)")
+else:
+    st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
 
 #step 3: Save the data in redis database
-
 if st.button('Submit'):
     return_val = registration_form.save_data_in_redis_db(person_name, role)
     if return_val == True:
@@ -164,16 +94,14 @@ if st.button('Submit'):
     elif return_val == 'name_false':
         st.error('Please enter the name: Name cannot be empty or spaces')
     elif return_val == 'file_false':
-        st.error('No face data found. Please refresh the page and capture your face again.')
+        st.error('face_embedding.txt is not found. Please refresh the page and execute again.')
 
 # Reset button
 if st.button('Reset Samples'):
-    if USE_SESSION_STATE:
-        if 'face_embeddings' in st.session_state:
-            st.session_state.face_embeddings = []
-    else:
-        if os.path.exists('face_embedding.txt'):
-            os.remove('face_embedding.txt')
+    if st.session_state.get('use_file', True) and os.path.exists('face_embedding.txt'):
+        os.remove('face_embedding.txt')
+    if 'embeddings_list' in st.session_state:
+        st.session_state['embeddings_list'] = []
     registration_form.reset()
     st.rerun()
 
