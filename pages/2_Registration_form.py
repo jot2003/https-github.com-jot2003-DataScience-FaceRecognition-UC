@@ -18,7 +18,11 @@ person_name = st.text_input(label='Name',placeholder='First & Last Name')
 role = st.selectbox(label='Select your role', options=('Student',
                                                         'Teacher'))
 
-# Initialize face embedding file if not exists
+# Initialize session state for embeddings (cloud compatibility)
+if 'face_embeddings' not in st.session_state:
+    st.session_state['face_embeddings'] = []
+
+# Initialize face embedding file if not exists (local compatibility)
 if not os.path.exists('face_embedding.txt'):
     # Create empty file to ensure it exists
     with open('face_embedding.txt', 'w') as f:
@@ -28,30 +32,47 @@ if not os.path.exists('face_embedding.txt'):
 def video_callback_func(frame):
     img = frame.to_ndarray(format= 'bgr24') #3d array bgr
     reg_img, embedding = registration_form.get_embedding(img)
-    #two step process
-    #1st step save data into local computer txt
+    
     if embedding is not None:
-        with open('face_embedding.txt', mode='ab') as f:
-            np.savetxt(f, embedding)
+        # Method 1: Save to session_state (for Streamlit Cloud)
+        st.session_state['face_embeddings'].append(embedding.copy())
+        
+        # Method 2: Save to file (for local development)
+        try:
+            with open('face_embedding.txt', mode='ab') as f:
+                np.savetxt(f, embedding)
+        except Exception as e:
+            # File write might fail on cloud, but that's ok
+            pass
+    
     return av.VideoFrame.from_ndarray(reg_img, format= 'bgr24')
 
 webrtc_streamer(key='registration', video_frame_callback=video_callback_func,
                 rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
 
-# Display file status
-if os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0:
-    st.success("✅ Face data captured successfully!")
-    
-    # Show number of samples
-    try:
+# Display status from both sources
+session_samples = len(st.session_state.get('face_embeddings', []))
+file_samples = 0
+
+try:
+    if os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0:
         embeddings = np.loadtxt('face_embedding.txt')
         if embeddings.ndim == 1:
-            num_samples = 1
+            file_samples = 1
         else:
-            num_samples = embeddings.shape[0]
-        st.info(f"📊 Number of samples collected: {num_samples}")
-    except:
-        st.warning("⚠️ Face embedding file exists but may be empty. Continue capturing faces.")
+            file_samples = embeddings.shape[0]
+except:
+    file_samples = 0
+
+total_samples = max(session_samples, file_samples)
+
+if total_samples > 0:
+    st.success(f"✅ Face data captured successfully!")
+    st.info(f"📊 Number of samples collected: {total_samples}")
+    if session_samples > 0:
+        st.info(f"💾 Session samples: {session_samples} (Cloud compatible)")
+    if file_samples > 0:
+        st.info(f"📁 File samples: {file_samples} (Local compatible)")
 else:
     st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
 
@@ -64,12 +85,18 @@ if st.button('Submit'):
     elif return_val == 'name_false':
         st.error('Please enter the name: Name cannot be empty or spaces')
     elif return_val == 'file_false':
-        st.error('face_embedding.txt is not found. Please refresh the page and execute again.')
+        st.error('No face data found. Please capture your face first by looking at the camera.')
 
 # Reset button
 if st.button('Reset Samples'):
+    # Clear session state
+    st.session_state['face_embeddings'] = []
+    
+    # Clear file
     if os.path.exists('face_embedding.txt'):
         os.remove('face_embedding.txt')
+    
+    # Reset form counter
     registration_form.reset()
     st.rerun()
 
