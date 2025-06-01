@@ -190,7 +190,7 @@ class RealTimePred:
 
 
 #### Registration form
-class RegistrationForm:
+class RegistrationFormV2:
     def __init__(self):
         self.sample = 0
     def reset(self):
@@ -252,3 +252,7 @@ class RegistrationForm:
         except Exception as e:
             st.error(f"❌ ERROR: Redis failed: {str(e)}")
             return 'file_false'
+
+# Keep old class for backward compatibility but mark as deprecated
+class RegistrationForm(RegistrationFormV2):
+    pass

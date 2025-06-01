@@ -10,7 +10,11 @@ import os
 st.subheader('Registration Form')
 
 ##init registration form
-registration_form = face_reco.RegistrationForm()
+registration_form = face_reco.RegistrationFormV2()
+
+# Debug: Show class info to confirm we're using the new class
+st.info(f"🔍 DEBUG: Using class: {type(registration_form).__name__}")
+st.info(f"🔍 DEBUG: Class methods: {[m for m in dir(registration_form) if not m.startswith('_')]}")
 
 # Simple test function to bypass caching
 def simple_test_function(name, role):
