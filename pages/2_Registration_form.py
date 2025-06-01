@@ -72,7 +72,13 @@ else:
 
 #step 3: Save the data in redis database
 if st.button('Submit'):
+    st.warning("🔍 DEBUG: Submit button clicked!")
+    st.info(f"🔍 DEBUG: Calling save_data_in_redis_db with name='{person_name}', role='{role}'")
+    
     return_val = registration_form.save_data_in_redis_db(person_name, role)
+    
+    st.info(f"🔍 DEBUG: Function returned: {return_val}")
+    
     if return_val == True:
         st.success(f"{person_name} registered successfully")
         # Clean up for local mode
