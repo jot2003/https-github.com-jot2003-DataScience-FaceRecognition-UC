@@ -238,17 +238,27 @@ class RegistrationForm:
         print(f"DEBUG: Forcing cloud mode = {is_streamlit_cloud}")
         
         if is_streamlit_cloud:
-            # Cloud mode: Create mock embedding (512 dimensions like InsightFace)
-            embeddings = np.random.rand(512).astype(np.float32)
-            
-            # Convert embedding into bytes
-            embeddings_bytes = embeddings.tobytes()
-            
-            # Save in Redis database
-            r.hset(name='academy:register', key=key, value=embeddings_bytes)
-            
-            print("DEBUG: Successfully saved mock embedding to Redis")
-            return True
+            try:
+                # Cloud mode: Create mock embedding (512 dimensions like InsightFace)
+                embeddings = np.random.rand(512).astype(np.float32)
+                print(f"DEBUG: Created embeddings shape: {embeddings.shape}")
+                
+                # Convert embedding into bytes
+                embeddings_bytes = embeddings.tobytes()
+                print(f"DEBUG: Converted to bytes, length: {len(embeddings_bytes)}")
+                
+                # Save in Redis database
+                result = r.hset(name='academy:register', key=key, value=embeddings_bytes)
+                print(f"DEBUG: Redis hset result: {result}")
+                
+                print("DEBUG: Successfully saved mock embedding to Redis")
+                return True
+                
+            except Exception as e:
+                print(f"DEBUG: Exception in cloud mode: {str(e)}")
+                print(f"DEBUG: Exception type: {type(e)}")
+                # If cloud mode fails, fall through to local mode
+                pass
         
         # Local mode: Original file-based logic
         embeddings = None
