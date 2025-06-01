@@ -237,26 +237,37 @@ class RegistrationForm:
         print(f"DEBUG: Environment detection = {env_detection}")
         print(f"DEBUG: Forcing cloud mode = {is_streamlit_cloud}")
         
+        # Debug display in UI
+        import streamlit as st
+        st.info(f"🔍 DEBUG: Environment detection = {env_detection}")
+        st.info(f"🔍 DEBUG: Forcing cloud mode = {is_streamlit_cloud}")
+        
         if is_streamlit_cloud:
             try:
                 # Cloud mode: Create mock embedding (512 dimensions like InsightFace)
                 embeddings = np.random.rand(512).astype(np.float32)
-                print(f"DEBUG: Created embeddings shape: {embeddings.shape}")
                 
                 # Convert embedding into bytes
                 embeddings_bytes = embeddings.tobytes()
-                print(f"DEBUG: Converted to bytes, length: {len(embeddings_bytes)}")
                 
                 # Save in Redis database
                 result = r.hset(name='academy:register', key=key, value=embeddings_bytes)
-                print(f"DEBUG: Redis hset result: {result}")
                 
-                print("DEBUG: Successfully saved mock embedding to Redis")
+                # Debug display in UI
+                import streamlit as st
+                st.success(f"✅ CLOUD DEBUG: Successfully saved mock embedding")
+                st.info(f"🔍 DEBUG: Embeddings shape: {embeddings.shape}")
+                st.info(f"🔍 DEBUG: Bytes length: {len(embeddings_bytes)}")
+                st.info(f"🔍 DEBUG: Redis result: {result}")
+                
                 return True
                 
             except Exception as e:
-                print(f"DEBUG: Exception in cloud mode: {str(e)}")
-                print(f"DEBUG: Exception type: {type(e)}")
+                # Debug display in UI
+                import streamlit as st
+                st.error(f"❌ CLOUD DEBUG: Exception occurred!")
+                st.error(f"🔍 DEBUG: Exception: {str(e)}")
+                st.error(f"🔍 DEBUG: Exception type: {type(e)}")
                 # If cloud mode fails, fall through to local mode
                 pass
         
