@@ -18,13 +18,23 @@ import os
 # Load environment variables
 load_dotenv()
 
-# Connect to Redis Client - Using environment variables for security
-hostname = os.getenv('REDIS_HOST')
-portnumber = int(os.getenv('REDIS_PORT', 6379))
-password = os.getenv('REDIS_PASSWORD')
+# Connect to Redis Client - Support both Streamlit secrets and environment variables
+try:
+    # Try Streamlit secrets first (for cloud deployment)
+    import streamlit as st
+    hostname = st.secrets["redis"]["REDIS_HOST"]
+    portnumber = st.secrets["redis"]["REDIS_PORT"]
+    password = st.secrets["redis"]["REDIS_PASSWORD"]
+    print("🌐 Using Streamlit Cloud secrets")
+except:
+    # Fallback to environment variables (for local development)
+    hostname = os.getenv('REDIS_HOST')
+    portnumber = int(os.getenv('REDIS_PORT', 6379))
+    password = os.getenv('REDIS_PASSWORD')
+    print("🏠 Using local environment variables")
 
 if not all([hostname, password]):
-    raise ValueError("⚠️ MISSING REDIS CREDENTIALS! Please check your .env file")
+    raise ValueError("⚠️ MISSING REDIS CREDENTIALS! Please check your .env file or Streamlit secrets")
 
 r = redis.StrictRedis(host=hostname,
                       port=portnumber,

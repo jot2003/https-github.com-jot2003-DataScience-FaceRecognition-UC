@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Streamlit secrets (CRITICAL - Never commit!)
+.streamlit/secrets.toml
+
 # Python
 __pycache__/
 *.py[cod]
