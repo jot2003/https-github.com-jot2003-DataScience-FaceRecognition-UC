@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from streamlit_webrtc import webrtc_streamer
 import av
+import os
 
 # st.set_page_config(page_title='Registration Form')
 st.subheader('Registration Form')
@@ -17,26 +18,42 @@ person_name = st.text_input(label='Name',placeholder='First & Last Name')
 role = st.selectbox(label='Select your role', options=('Student',
                                                         'Teacher'))
 
-# Initialize session state for face embedding
-if 'face_embedding' not in st.session_state:
-    st.session_state['face_embedding'] = None
+# Initialize face embedding file if not exists
+if not os.path.exists('face_embedding.txt'):
+    # Create empty file to ensure it exists
+    with open('face_embedding.txt', 'w') as f:
+        pass
 
 #step 2: Collect facial embedding of the person
 def video_callback_func(frame):
     img = frame.to_ndarray(format= 'bgr24') #3d array bgr
     reg_img, embedding = registration_form.get_embedding(img)
-    #Save embedding to session state instead of file
+    #two step process
+    #1st step save data into local computer txt
     if embedding is not None:
-        st.session_state['face_embedding'] = embedding
+        with open('face_embedding.txt', mode='ab') as f:
+            np.savetxt(f, embedding)
     return av.VideoFrame.from_ndarray(reg_img, format= 'bgr24')
 
-webrtc_streamer(key='registration', video_frame_callback=video_callback_func)
+webrtc_streamer(key='registration', video_frame_callback=video_callback_func,
+                rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
 
-# Show status
-if st.session_state['face_embedding'] is not None:
-    st.success("✅ Face captured successfully!")
+# Display file status
+if os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0:
+    st.success("✅ Face data captured successfully!")
+    
+    # Show number of samples
+    try:
+        embeddings = np.loadtxt('face_embedding.txt')
+        if embeddings.ndim == 1:
+            num_samples = 1
+        else:
+            num_samples = embeddings.shape[0]
+        st.info(f"📊 Number of samples collected: {num_samples}")
+    except:
+        st.warning("⚠️ Face embedding file exists but may be empty. Continue capturing faces.")
 else:
-    st.info("📷 Please position your face in front of the camera to capture")
+    st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
 
 #step 3: Save the data in redis database
 
@@ -44,11 +61,15 @@ if st.button('Submit'):
     return_val = registration_form.save_data_in_redis_db(person_name, role)
     if return_val == True:
         st.success(f"{person_name} registered successfully")
-        # Reset after successful registration
-        st.session_state['face_embedding'] = None
-        registration_form.reset()
     elif return_val == 'name_false':
         st.error('Please enter the name: Name cannot be empty or spaces')
     elif return_val == 'file_false':
-        st.error('No face captured. Please refresh the page and capture your face first.')
+        st.error('face_embedding.txt is not found. Please refresh the page and execute again.')
+
+# Reset button
+if st.button('Reset Samples'):
+    if os.path.exists('face_embedding.txt'):
+        os.remove('face_embedding.txt')
+    registration_form.reset()
+    st.rerun()
 

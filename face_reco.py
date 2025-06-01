@@ -222,30 +222,30 @@ class RegistrationForm:
         else:
             return 'name_false'
         
-        #validation face_embedding
-        if 'face_embedding' in st.session_state:
-            embeddings = st.session_state['face_embedding']
+        #validation face_embedding file
+        if os.path.isfile('face_embedding.txt'):
+            # Load embeddings from file
+            embeddings = np.loadtxt('face_embedding.txt')
             
-            # Robust validation and conversion for embeddings
-            try:
-                # Ensure embeddings is a numpy array
-                if not isinstance(embeddings, np.ndarray):
-                    embeddings = np.array(embeddings)
-                
-                # Ensure it's float32 type (standard for face embeddings)
-                if embeddings.dtype != np.float32:
-                    embeddings = embeddings.astype(np.float32)
-                
-                # Convert embedding into bytes
-                embeddings_bytes = embeddings.tobytes()
-                
-                #save in redis db
-                r.hset(name='academy:register',key=key,value=embeddings_bytes)
-                return True
-                
-            except Exception as e:
-                # If conversion fails, return error
-                print(f"❌ Error converting embeddings: {e}")
-                return 'file_false'
+            # Handle case where only one sample exists (1D array)
+            if embeddings.ndim == 1:
+                embeddings = embeddings.reshape(1, -1)
+            
+            # Take the mean of all embeddings if multiple samples
+            if embeddings.shape[0] > 1:
+                embeddings = np.mean(embeddings, axis=0)
+            else:
+                embeddings = embeddings.flatten()
+            
+            # Convert embedding into bytes
+            embeddings_bytes = embeddings.tobytes()
+            
+            # Save in Redis database
+            r.hset(name='academy:register', key=key, value=embeddings_bytes)
+            
+            # Remove the file after successful save
+            os.remove('face_embedding.txt')
+            
+            return True
         else:
             return 'file_false'
