@@ -12,6 +12,12 @@ st.subheader('Registration Form')
 ##init registration form
 registration_form = face_reco.RegistrationForm()
 
+# Simple test function to bypass caching
+def simple_test_function(name, role):
+    st.success("✅ SIMPLE TEST: Direct function call works!")
+    st.info(f"✅ SIMPLE TEST: Got name='{name}', role='{role}'")
+    return "direct_success"
+
 #Step 1: Collect person name and role
 #form
 person_name = st.text_input(label='Name',placeholder='First & Last Name')
@@ -75,10 +81,22 @@ if st.button('Submit'):
     st.warning("🔍 DEBUG: Submit button clicked!")
     st.info(f"🔍 DEBUG: Calling save_data_in_redis_db with name='{person_name}', role='{role}'")
     
-    # Test new function first
+    # Test new function first (with fallback for caching issues)
     st.info("🔍 DEBUG: Testing new function...")
-    test_result = registration_form.test_new_function(person_name, role)
-    st.info(f"🔍 DEBUG: New function returned: {test_result}")
+    try:
+        if hasattr(registration_form, 'test_new_function'):
+            test_result = registration_form.test_new_function(person_name, role)
+            st.info(f"🔍 DEBUG: New function returned: {test_result}")
+        else:
+            st.error("🔍 DEBUG: test_new_function not found - caching issue!")
+            st.info("🔍 DEBUG: Available methods:", dir(registration_form))
+    except Exception as e:
+        st.error(f"🔍 DEBUG: Error calling new function: {str(e)}")
+    
+    # Test simple function (no class dependency)
+    st.info("🔍 DEBUG: Testing simple function...")
+    simple_result = simple_test_function(person_name, role)
+    st.info(f"🔍 DEBUG: Simple function returned: {simple_result}")
     
     return_val = registration_form.save_data_in_redis_db(person_name, role)
     
