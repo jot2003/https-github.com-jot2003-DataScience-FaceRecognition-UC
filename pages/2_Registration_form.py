@@ -12,10 +12,6 @@ st.subheader('Registration Form')
 ##init registration form
 registration_form = face_reco.RegistrationForm()
 
-# Global variable for WebRTC callback compatibility
-if 'global_embeddings' not in globals():
-    global_embeddings = []
-
 #Step 1: Collect person name and role
 #form
 person_name = st.text_input(label='Name',placeholder='First & Last Name')
@@ -33,14 +29,14 @@ is_streamlit_cloud = (
     'streamlit.app' in os.environ.get('HOSTNAME', '')
 )
 
+# Initialize embeddings storage based on environment
 if is_streamlit_cloud:
     # Force session_state mode on cloud
     st.session_state['use_file'] = False
-    if 'embeddings_list' not in st.session_state:
-        st.session_state['embeddings_list'] = []
+    # Use special key that persists in WebRTC
+    if 'webrtc_embeddings' not in st.session_state:
+        st.session_state['webrtc_embeddings'] = []
     st.info("🌐 Detected Streamlit Cloud - Using session storage mode")
-    # Clear global embeddings for fresh start
-    global_embeddings = []
 else:
     # Local environment - use file system
     try:
@@ -54,34 +50,32 @@ else:
     except:
         # Fallback to session_state if file operations fail
         st.session_state['use_file'] = False
-        if 'embeddings_list' not in st.session_state:
-            st.session_state['embeddings_list'] = []
+        if 'webrtc_embeddings' not in st.session_state:
+            st.session_state['webrtc_embeddings'] = []
 
 #step 2: Collect facial embedding of the person
 def video_callback_func(frame):
-    global global_embeddings
     img = frame.to_ndarray(format= 'bgr24') #3d array bgr
     reg_img, embedding = registration_form.get_embedding(img)
     
     if embedding is not None:
-        # Always save to global for WebRTC compatibility
-        global_embeddings.append(embedding)
+        # Cloud mode: Force use of special session_state key
+        if not st.session_state.get('use_file', True):
+            # Direct append to special WebRTC key
+            if 'webrtc_embeddings' not in st.session_state:
+                st.session_state['webrtc_embeddings'] = []
+            st.session_state['webrtc_embeddings'].append(embedding.tolist())  # Convert to list for JSON serialization
         
-        # Also try session_state if available
-        try:
-            if 'embeddings_list' not in st.session_state:
-                st.session_state['embeddings_list'] = []
-            st.session_state['embeddings_list'].append(embedding)
-        except:
-            pass  # WebRTC context might not have session_state access
-        
-        # Try file for local mode
-        if st.session_state.get('use_file', True):
+        # Local mode: Use file system
+        else:
             try:
                 with open('face_embedding.txt', mode='ab') as f:
                     np.savetxt(f, embedding)
             except:
-                pass  # File operations might fail in cloud
+                # File failed, fallback to session_state
+                if 'webrtc_embeddings' not in st.session_state:
+                    st.session_state['webrtc_embeddings'] = []
+                st.session_state['webrtc_embeddings'].append(embedding.tolist())
     
     return av.VideoFrame.from_ndarray(reg_img, format= 'bgr24')
 
@@ -92,12 +86,12 @@ webrtc_streamer(key='registration', video_frame_callback=video_callback_func,
 has_data = False
 num_samples = 0
 
-# Check global embeddings first (most reliable)
-if len(global_embeddings) > 0:
+# Check WebRTC embeddings first (most reliable for cloud)
+if 'webrtc_embeddings' in st.session_state and len(st.session_state['webrtc_embeddings']) > 0:
     has_data = True
-    num_samples = len(global_embeddings)
+    num_samples = len(st.session_state['webrtc_embeddings'])
 elif st.session_state.get('use_file', True):
-    # Check file
+    # Check file for local mode
     if os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0:
         has_data = True
         try:
@@ -105,11 +99,6 @@ elif st.session_state.get('use_file', True):
             num_samples = 1 if embeddings.ndim == 1 else embeddings.shape[0]
         except:
             pass
-else:
-    # Check session_state
-    if 'embeddings_list' in st.session_state and len(st.session_state['embeddings_list']) > 0:
-        has_data = True
-        num_samples = len(st.session_state['embeddings_list'])
 
 if has_data:
     st.success("✅ Face data captured successfully!")
@@ -117,9 +106,8 @@ if has_data:
     if not st.session_state.get('use_file', True):
         st.info("🌐 Using cloud-compatible mode (session storage)")
         # Debug info for troubleshooting
-        st.info(f"🔍 Debug: Global embeddings: {len(global_embeddings)}")
-        if 'embeddings_list' in st.session_state:
-            st.info(f"🔍 Debug: Session has {len(st.session_state['embeddings_list'])} embeddings")
+        if 'webrtc_embeddings' in st.session_state:
+            st.info(f"🔍 Debug: WebRTC embeddings: {len(st.session_state['webrtc_embeddings'])}")
     else:
         st.info("💾 Using local file mode")
 else:
@@ -127,7 +115,8 @@ else:
     # Debug info
     mode = "Cloud session mode" if not st.session_state.get('use_file', True) else "Local file mode"
     st.info(f"🔧 Mode: {mode}")
-    st.info(f"🔍 Debug: Global embeddings: {len(global_embeddings)}")
+    if 'webrtc_embeddings' in st.session_state:
+        st.info(f"🔍 Debug: WebRTC embeddings: {len(st.session_state['webrtc_embeddings'])}")
 
 #step 3: Save the data in redis database
 if st.button('Submit'):
@@ -135,9 +124,8 @@ if st.button('Submit'):
     if return_val == True:
         st.success(f"{person_name} registered successfully")
         # Clear all data after successful submission
-        global_embeddings = []
-        if 'embeddings_list' in st.session_state:
-            st.session_state['embeddings_list'] = []
+        if 'webrtc_embeddings' in st.session_state:
+            st.session_state['webrtc_embeddings'] = []
     elif return_val == 'name_false':
         st.error('Please enter the name: Name cannot be empty or spaces')
     elif return_val == 'file_false':
@@ -145,11 +133,10 @@ if st.button('Submit'):
 
 # Reset button
 if st.button('Reset Samples'):
-    global_embeddings = []
+    if 'webrtc_embeddings' in st.session_state:
+        st.session_state['webrtc_embeddings'] = []
     if st.session_state.get('use_file', True) and os.path.exists('face_embedding.txt'):
         os.remove('face_embedding.txt')
-    if 'embeddings_list' in st.session_state:
-        st.session_state['embeddings_list'] = []
     registration_form.reset()
     st.rerun()
 
