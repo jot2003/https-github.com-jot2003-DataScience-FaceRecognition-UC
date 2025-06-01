@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
 import cv2
-
 import redis
 import os
 from dotenv import load_dotenv
+import threading
+import time
 
 #insight face
 try:
@@ -16,7 +17,6 @@ except ImportError:
 from sklearn.metrics import pairwise
 
 #time
-import time
 from datetime import datetime
 
 # Load environment variables
@@ -82,30 +82,72 @@ def retrieve_data(name):
         })
         return demo_data
 
-# Demo mode - check if running on cloud
+# Smart model loading with background download
 DEMO_MODE = "STREAMLIT_SHARING" in os.environ or "STREAMLIT_CLOUD" in os.environ
 
-#configure face analysis - with demo mode
-if DEMO_MODE or not INSIGHTFACE_AVAILABLE:
-    print("🎭 Running in DEMO MODE - Face recognition disabled")
-    faceapp = None
-else:
+# Global variables for model loading
+faceapp = None
+model_loading = False
+model_loaded = False
+
+def load_model_background():
+    """Background model loading to avoid blocking UI"""
+    global faceapp, model_loading, model_loaded
+    
+    if model_loading or model_loaded:
+        return
+        
+    model_loading = True
+    print("🔄 Starting background model download...")
+    
     try:
-        # For local development with custom model path
-        if os.path.exists('insightface_model'):
-            faceapp = FaceAnalysis(name='buffalo_sc',
-                                 root='insightface_model',
-                                 providers=['CPUExecutionProvider'])
+        if INSIGHTFACE_AVAILABLE:
+            # Try to load with minimal configuration
+            faceapp = FaceAnalysis(
+                name='buffalo_sc',
+                providers=['CPUExecutionProvider']
+            )
+            # Prepare with minimal settings for faster loading
+            faceapp.prepare(ctx_id=0, det_size=(320, 320), det_thresh=0.6)
+            model_loaded = True
+            print("✅ Face analysis model loaded successfully in background!")
         else:
-            # For Streamlit Cloud - auto download model
-            faceapp = FaceAnalysis(name='buffalo_sc',
-                                 providers=['CPUExecutionProvider'])
-        faceapp.prepare(ctx_id=0, det_size=(640,640), det_thresh=0.5)
-        print("✅ Face analysis model loaded successfully")
+            print("❌ InsightFace not available")
     except Exception as e:
-        print(f"⚠️ Error loading face analysis model: {e}")
-        print("🎭 Falling back to DEMO MODE")
+        print(f"⚠️ Background model loading failed: {e}")
         faceapp = None
+    finally:
+        model_loading = False
+
+def get_face_app():
+    """Get face app with lazy loading"""
+    global faceapp, model_loaded
+    
+    if not model_loaded and not model_loading:
+        # Start background loading if not started
+        thread = threading.Thread(target=load_model_background, daemon=True)
+        thread.start()
+        
+    return faceapp
+
+# Initialize model loading in background for cloud deployment
+if DEMO_MODE and INSIGHTFACE_AVAILABLE:
+    # Start background download immediately but don't block
+    thread = threading.Thread(target=load_model_background, daemon=True)
+    thread.start()
+    print("🚀 Started background model loading for Streamlit Cloud")
+elif not DEMO_MODE:
+    # Local development - load immediately
+    load_model_background()
+
+def get_model_status():
+    """Get current model loading status"""
+    if model_loaded:
+        return "✅ Ready"
+    elif model_loading:
+        return "🔄 Loading..."
+    else:
+        return "⏳ Not started"
 
 #ML Search Algorithm
 def ml_search_algorithm(dataframe, feature_column, test_vector,
