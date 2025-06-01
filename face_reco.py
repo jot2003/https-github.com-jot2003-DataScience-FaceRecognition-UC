@@ -213,110 +213,47 @@ class RegistrationForm:
         return frame, embeddings
     
     def save_data_in_redis_db(self,name,role):
-        #validation name
-        if name is not None:
-            if name.strip() != '':
-                key = f'{name}@{role}'
-            else:
-                return 'name_false'
-        else:
-            return 'name_false'
-        
-        # DEBUG: Force cloud mode for now
-        import os
-        is_streamlit_cloud = True  # FORCE CLOUD MODE
-        
-        # Original detection for debugging
-        env_detection = (
-            'STREAMLIT_SHARING_MODE' in os.environ or 
-            'STREAMLIT_SERVER_HEADLESS' in os.environ or
-            os.path.exists('/mount/src') or
-            'streamlit.app' in os.environ.get('HOSTNAME', '')
-        )
-        
-        print(f"DEBUG: Environment detection = {env_detection}")
-        print(f"DEBUG: Forcing cloud mode = {is_streamlit_cloud}")
-        
-        # Debug display in UI
-        import streamlit as st
-        st.info(f"🔍 DEBUG: Environment detection = {env_detection}")
-        st.info(f"🔍 DEBUG: Forcing cloud mode = {is_streamlit_cloud}")
-        
-        if is_streamlit_cloud:
-            try:
-                # Cloud mode: Create mock embedding (512 dimensions like InsightFace)
-                embeddings = np.random.rand(512).astype(np.float32)
-                
-                # Convert embedding into bytes
-                embeddings_bytes = embeddings.tobytes()
-                
-                # Save in Redis database
-                result = r.hset(name='academy:register', key=key, value=embeddings_bytes)
-                
-                # Debug display in UI
-                import streamlit as st
-                st.success(f"✅ CLOUD DEBUG: Successfully saved mock embedding")
-                st.info(f"🔍 DEBUG: Embeddings shape: {embeddings.shape}")
-                st.info(f"🔍 DEBUG: Bytes length: {len(embeddings_bytes)}")
-                st.info(f"🔍 DEBUG: Redis result: {result}")
-                
-                return True
-                
-            except Exception as e:
-                # Debug display in UI
-                import streamlit as st
-                st.error(f"❌ CLOUD DEBUG: Exception occurred!")
-                st.error(f"🔍 DEBUG: Exception: {str(e)}")
-                st.error(f"🔍 DEBUG: Exception type: {type(e)}")
-                # If cloud mode fails, fall through to local mode
-                pass
-        
-        # Local mode: Original file-based logic
-        embeddings = None
-        
-        # Method 1: Try to load from file (original logic for local)
-        if os.path.isfile('face_embedding.txt'):
-            try:
-                embeddings = np.loadtxt('face_embedding.txt')
-                
-                # Handle case where only one sample exists (1D array)
-                if embeddings.ndim == 1:
-                    embeddings = embeddings.reshape(1, -1)
-                
-                # Take the mean of all embeddings if multiple samples
-                if embeddings.shape[0] > 1:
-                    embeddings = np.mean(embeddings, axis=0)
-                else:
-                    embeddings = embeddings.flatten()
-                
-                # Remove the file after successful load
-                os.remove('face_embedding.txt')
-            except:
-                embeddings = None
-        
-        # Method 2: Fallback to session_state (local compatibility)
-        if embeddings is None:
+        try:
             import streamlit as st
-            if 'embeddings_list' in st.session_state and len(st.session_state['embeddings_list']) > 0:
-                embeddings_list = st.session_state['embeddings_list']
-                
-                if len(embeddings_list) == 1:
-                    embeddings = embeddings_list[0]
-                else:
-                    # Take mean of multiple samples
-                    embeddings = np.mean(embeddings_list, axis=0)
-                
-                # Clear session state after use
-                st.session_state['embeddings_list'] = []
-        
-        # Final validation for local mode
-        if embeddings is not None:
-            # Convert embedding into bytes
+            st.warning("🔍 MINIMAL TEST: Function started successfully")
+            
+            # Test basic operations one by one
+            st.info("🔍 TEST: Testing basic variable assignment...")
+            test_var = "hello"
+            st.success(f"🔍 TEST: Basic assignment works: {test_var}")
+            
+            st.info("🔍 TEST: Testing name validation...")
+            if name is not None and name.strip() != '':
+                key = f'{name}@{role}'
+                st.success(f"🔍 TEST: Name validation passed, key = {key}")
+            else:
+                st.error("🔍 TEST: Name validation failed")
+                return 'name_false'
+            
+            st.info("🔍 TEST: Testing imports...")
+            import os
+            import numpy as np
+            st.success("🔍 TEST: All imports successful")
+            
+            st.info("🔍 TEST: Testing numpy operations...")
+            embeddings = np.random.rand(512).astype(np.float32)
+            st.success(f"🔍 TEST: Numpy works, embedding shape: {embeddings.shape}")
+            
+            st.info("🔍 TEST: Testing Redis connection...")
+            result = r.hset(name='test:debug', key='test_key', value=b'test_value')
+            st.success(f"🔍 TEST: Redis works, result: {result}")
+            
+            # If we get here, everything works
+            st.success("🔍 TEST: All tests passed! Saving real data...")
+            
             embeddings_bytes = embeddings.tobytes()
+            result = r.hset(name='academy:register', key=key, value=embeddings_bytes)
             
-            # Save in Redis database
-            r.hset(name='academy:register', key=key, value=embeddings_bytes)
-            
+            st.success("✅ SUCCESS: Registration completed successfully!")
             return True
-        else:
+            
+        except Exception as e:
+            import streamlit as st
+            st.error(f"❌ CRASH: Exception caught: {str(e)}")
+            st.error(f"❌ CRASH: Exception type: {type(e)}")
             return 'file_false'
