@@ -53,12 +53,23 @@ def retrieve_data(name):
     retrive_df[['Name', 'Role']]= retrive_df['name_role'].apply(lambda x: x.split('@')).apply(pd.Series)
     return retrive_df[['Name', 'Role', 'facial_features']]
 
-#configure face analysis
-faceapp = FaceAnalysis(name='buffalo_sc',
-                       root='insightface_model',
-                       providers=['CPUExecutionProvider'])
-faceapp.prepare(ctx_id=0, det_size=(640,640), det_thresh=0.5)
-
+#configure face analysis - with error handling for cloud deployment
+try:
+    # For local development with custom model path
+    if os.path.exists('insightface_model'):
+        faceapp = FaceAnalysis(name='buffalo_sc',
+                             root='insightface_model',
+                             providers=['CPUExecutionProvider'])
+    else:
+        # For Streamlit Cloud - auto download model
+        faceapp = FaceAnalysis(name='buffalo_sc',
+                             providers=['CPUExecutionProvider'])
+    faceapp.prepare(ctx_id=0, det_size=(640,640), det_thresh=0.5)
+    print("✅ Face analysis model loaded successfully")
+except Exception as e:
+    print(f"⚠️ Error loading face analysis model: {e}")
+    # Create a dummy faceapp for testing
+    faceapp = None
 
 #ML Search Algorithm
 def ml_search_algorithm(dataframe, feature_column, test_vector,
