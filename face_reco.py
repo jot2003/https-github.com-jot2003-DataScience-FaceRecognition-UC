@@ -3,6 +3,8 @@ import pandas as pd
 import cv2
 
 import redis
+import os
+from dotenv import load_dotenv
 
 #insight face
 from insightface.app import FaceAnalysis
@@ -13,12 +15,16 @@ import time
 from datetime import datetime
 import os
 
-# Connect to Redis Client
-#redis-19022.c273.us-east-1-2.ec2.redns.redis-cloud.com:19022
-#Od1yizh5yilrPQCkCNcab52la5QfKQjl
-hostname = 'redis-10991.c244.us-east-1-2.ec2.redns.redis-cloud.com'
-portnumber = 10991
-password = 'NNGuJHe6l5ZgOQcKGLnvx00LkRBZqq5W'
+# Load environment variables
+load_dotenv()
+
+# Connect to Redis Client - Using environment variables for security
+hostname = os.getenv('REDIS_HOST')
+portnumber = int(os.getenv('REDIS_PORT', 6379))
+password = os.getenv('REDIS_PASSWORD')
+
+if not all([hostname, password]):
+    raise ValueError("⚠️ MISSING REDIS CREDENTIALS! Please check your .env file")
 
 r = redis.StrictRedis(host=hostname,
                       port=portnumber,
