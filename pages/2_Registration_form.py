@@ -24,10 +24,16 @@ try:
     if not os.path.exists('face_embedding.txt'):
         with open('face_embedding.txt', 'w') as f:
             pass
+    # Test write permission
+    with open('face_embedding.txt', 'a') as f:
+        pass
     st.session_state['use_file'] = True
 except:
     # Cloud doesn't support file operations, use session_state
     st.session_state['use_file'] = False
+
+# Force session_state mode on cloud (detected by lack of local file system)
+if not st.session_state.get('use_file', True):
     if 'embeddings_list' not in st.session_state:
         st.session_state['embeddings_list'] = []
 
@@ -83,8 +89,16 @@ if has_data:
     st.info(f"📊 Number of samples collected: {num_samples}")
     if not st.session_state.get('use_file', True):
         st.info("🌐 Using cloud-compatible mode (session storage)")
+        # Debug info for troubleshooting
+        if 'embeddings_list' in st.session_state:
+            st.info(f"🔍 Debug: Session has {len(st.session_state['embeddings_list'])} embeddings")
+    else:
+        st.info("💾 Using local file mode")
 else:
     st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
+    # Debug info
+    mode = "Cloud session mode" if not st.session_state.get('use_file', True) else "Local file mode"
+    st.info(f"🔧 Mode: {mode}")
 
 #step 3: Save the data in redis database
 if st.button('Submit'):

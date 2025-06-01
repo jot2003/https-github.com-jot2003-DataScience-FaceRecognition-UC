@@ -260,7 +260,7 @@ class RegistrationForm:
                 # Clear session state after use
                 st.session_state['embeddings_list'] = []
         
-        # Final validation
+        # ULTRA SMART: Only fail if BOTH methods have no data
         if embeddings is not None:
             # Convert embedding into bytes
             embeddings_bytes = embeddings.tobytes()
@@ -270,4 +270,9 @@ class RegistrationForm:
             
             return True
         else:
-            return 'file_false'
+            # Check one more time if we have session data but failed to process
+            import streamlit as st
+            if ('embeddings_list' in st.session_state and len(st.session_state['embeddings_list']) > 0) or os.path.isfile('face_embedding.txt'):
+                return 'processing_error'  # Different error for debugging
+            else:
+                return 'file_false'
