@@ -89,7 +89,8 @@ if st.button('Submit'):
             st.info(f"🔍 DEBUG: New function returned: {test_result}")
         else:
             st.error("🔍 DEBUG: test_new_function not found - caching issue!")
-            st.info("🔍 DEBUG: Available methods:", dir(registration_form))
+            available_methods = [method for method in dir(registration_form) if not method.startswith('_')]
+            st.info(f"🔍 DEBUG: Available methods: {available_methods}")
     except Exception as e:
         st.error(f"🔍 DEBUG: Error calling new function: {str(e)}")
     

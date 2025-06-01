@@ -219,48 +219,36 @@ class RegistrationForm:
         st.success("✅ NEW TEST: If you see this, the function works!")
         return "test_success"
     
-    def save_data_in_redis_db(self,name,role):
+    def save_data_in_redis_db(self, name, role):
+        """Ultra-simple cloud registration without file operations"""
+        import streamlit as st
+        import numpy as np
+        
+        # Debug: Show that function started
+        st.warning("🔍 ULTRA-SIMPLE: Function called successfully!")
+        
+        # Step 1: Validate name
+        if not name or name.strip() == '':
+            st.error("🔍 ULTRA-SIMPLE: Name validation failed")
+            return 'name_false'
+        
+        st.info(f"🔍 ULTRA-SIMPLE: Name validation OK: '{name}'")
+        
+        # Step 2: Create key
+        key = f'{name}@{role}'
+        st.info(f"🔍 ULTRA-SIMPLE: Key created: '{key}'")
+        
+        # Step 3: Create mock embedding (cloud demo)
+        embeddings = np.random.rand(512).astype(np.float32)
+        st.info(f"🔍 ULTRA-SIMPLE: Mock embedding created, shape: {embeddings.shape}")
+        
+        # Step 4: Save to Redis
         try:
-            import streamlit as st
-            st.warning("🔍 MINIMAL TEST: Function started successfully")
-            
-            # Test basic operations one by one
-            st.info("🔍 TEST: Testing basic variable assignment...")
-            test_var = "hello"
-            st.success(f"🔍 TEST: Basic assignment works: {test_var}")
-            
-            st.info("🔍 TEST: Testing name validation...")
-            if name is not None and name.strip() != '':
-                key = f'{name}@{role}'
-                st.success(f"🔍 TEST: Name validation passed, key = {key}")
-            else:
-                st.error("🔍 TEST: Name validation failed")
-                return 'name_false'
-            
-            st.info("🔍 TEST: Testing imports...")
-            import os
-            import numpy as np
-            st.success("🔍 TEST: All imports successful")
-            
-            st.info("🔍 TEST: Testing numpy operations...")
-            embeddings = np.random.rand(512).astype(np.float32)
-            st.success(f"🔍 TEST: Numpy works, embedding shape: {embeddings.shape}")
-            
-            st.info("🔍 TEST: Testing Redis connection...")
-            result = r.hset(name='test:debug', key='test_key', value=b'test_value')
-            st.success(f"🔍 TEST: Redis works, result: {result}")
-            
-            # If we get here, everything works
-            st.success("🔍 TEST: All tests passed! Saving real data...")
-            
             embeddings_bytes = embeddings.tobytes()
             result = r.hset(name='academy:register', key=key, value=embeddings_bytes)
-            
-            st.success("✅ SUCCESS: Registration completed successfully!")
+            st.success(f"🔍 ULTRA-SIMPLE: Redis save result: {result}")
+            st.success("✅ SUCCESS: Cloud demo registration completed!")
             return True
-            
         except Exception as e:
-            import streamlit as st
-            st.error(f"❌ CRASH: Exception caught: {str(e)}")
-            st.error(f"❌ CRASH: Exception type: {type(e)}")
+            st.error(f"❌ ERROR: Redis failed: {str(e)}")
             return 'file_false'
