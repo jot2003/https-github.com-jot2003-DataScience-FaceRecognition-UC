@@ -147,6 +147,13 @@ if st.button('Submit'):
     try:
         return_val = registration_form.save_data_in_redis_db(person_name, role)
         st.info(f"🔍 DEBUG: Class method returned: {return_val}")
+        
+        # If class method returns file_false, use standalone as fallback
+        if return_val == 'file_false':
+            st.warning("🔍 DEBUG: Class method returned file_false - trying standalone function!")
+            return_val = standalone_registration(person_name, role)
+            st.info(f"🔍 DEBUG: Standalone function returned: {return_val}")
+            
     except Exception as e:
         st.error(f"🔍 DEBUG: Class method failed: {str(e)}")
         st.warning("🔍 DEBUG: Trying standalone function as fallback...")
