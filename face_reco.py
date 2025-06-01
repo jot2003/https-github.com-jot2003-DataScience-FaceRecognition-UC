@@ -222,34 +222,14 @@ class RegistrationForm:
         else:
             return 'name_false'
         
-        # Try to get embeddings from multiple sources (hybrid approach)
+        # Try session state first (Streamlit Cloud), then fallback to file (Local)
         embeddings = None
         
-        # Method 1: Try session_state first (for Streamlit Cloud)
+        # Method 1: Try session state (Streamlit Cloud)
         try:
-            import streamlit as st
-            if 'face_embeddings' in st.session_state and len(st.session_state['face_embeddings']) > 0:
-                embeddings_list = st.session_state['face_embeddings']
+            if 'face_embeddings' in st.session_state and len(st.session_state.face_embeddings) > 0:
+                embeddings_list = st.session_state.face_embeddings
                 embeddings = np.array(embeddings_list)
-                
-                # Take the mean if multiple samples
-                if embeddings.shape[0] > 1:
-                    embeddings = np.mean(embeddings, axis=0)
-                else:
-                    embeddings = embeddings.flatten()
-                
-                print("✅ Using embeddings from session_state")
-        except:
-            pass
-        
-        # Method 2: Try file if session_state failed (for local development)
-        if embeddings is None and os.path.isfile('face_embedding.txt'):
-            try:
-                embeddings = np.loadtxt('face_embedding.txt')
-                
-                # Handle case where only one sample exists (1D array)
-                if embeddings.ndim == 1:
-                    embeddings = embeddings.reshape(1, -1)
                 
                 # Take the mean of all embeddings if multiple samples
                 if embeddings.shape[0] > 1:
@@ -257,28 +237,37 @@ class RegistrationForm:
                 else:
                     embeddings = embeddings.flatten()
                 
-                print("✅ Using embeddings from file")
-            except Exception as e:
-                print(f"❌ Error reading file: {e}")
-                embeddings = None
+                # Clear session state after successful processing
+                st.session_state.face_embeddings = []
+                
+        except:
+            pass
         
-        # Final validation
+        # Method 2: Try file (Local development) if session state failed
+        if embeddings is None and os.path.isfile('face_embedding.txt'):
+            # Load embeddings from file
+            embeddings = np.loadtxt('face_embedding.txt')
+            
+            # Handle case where only one sample exists (1D array)
+            if embeddings.ndim == 1:
+                embeddings = embeddings.reshape(1, -1)
+            
+            # Take the mean of all embeddings if multiple samples
+            if embeddings.shape[0] > 1:
+                embeddings = np.mean(embeddings, axis=0)
+            else:
+                embeddings = embeddings.flatten()
+            
+            # Remove the file after successful processing
+            os.remove('face_embedding.txt')
+        
+        # If we have embeddings from either method, save to Redis
         if embeddings is not None:
             # Convert embedding into bytes
             embeddings_bytes = embeddings.tobytes()
             
             # Save in Redis database
             r.hset(name='academy:register', key=key, value=embeddings_bytes)
-            
-            # Cleanup: Remove file if exists and clear session_state
-            try:
-                if os.path.isfile('face_embedding.txt'):
-                    os.remove('face_embedding.txt')
-                import streamlit as st
-                if 'face_embeddings' in st.session_state:
-                    del st.session_state['face_embeddings']
-            except:
-                pass
             
             return True
         else:
