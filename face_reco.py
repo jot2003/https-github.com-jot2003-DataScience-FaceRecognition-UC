@@ -1,153 +1,76 @@
 import numpy as np
 import pandas as pd
 import cv2
+
 import redis
-import os
-from dotenv import load_dotenv
-import threading
-import time
 
 #insight face
-try:
-    from insightface.app import FaceAnalysis
-    INSIGHTFACE_AVAILABLE = True
-except ImportError:
-    INSIGHTFACE_AVAILABLE = False
-    
+from insightface.app import FaceAnalysis
 from sklearn.metrics import pairwise
 
 #time
+import time
 from datetime import datetime
+import os
 
-# Load environment variables
-load_dotenv()
+# Connect to Redis Client
+#redis-19022.c273.us-east-1-2.ec2.redns.redis-cloud.com:19022
+#Od1yizh5yilrPQCkCNcab52la5QfKQjl
+hostname = 'redis-10991.c244.us-east-1-2.ec2.redns.redis-cloud.com'
+portnumber = 10991
+password = 'NNGuJHe6l5ZgOQcKGLnvx00LkRBZqq5W'
 
-# Connect to Redis Client - Using Environment Variables for Security
-hostname = os.getenv('REDIS_HOST', 'localhost')
-portnumber = int(os.getenv('REDIS_PORT', 6379))
-password = os.getenv('REDIS_PASSWORD', '')
-
-# Fallback for local development (if .env not found)
-if not hostname or hostname == 'localhost':
-    print("⚠️ Warning: Using fallback Redis configuration")
-    hostname = 'redis-10991.c244.us-east-1-2.ec2.redns.redis-cloud.com'
-    portnumber = 10991
-    password = 'NNGuJHe6l5ZgOQcKGLnvx00LkRBZqq5W'
-
-# Redis connection with error handling
-try:
-    r = redis.StrictRedis(host=hostname,
-                          port=portnumber,
-                          password=password,
-                          socket_connect_timeout=5)
-    # Test connection
-    r.ping()
-    print("✅ Redis connected successfully")
-except Exception as e:
-    print(f"⚠️ Redis connection failed: {e}")
-    # Create dummy Redis for demo
-    class DummyRedis:
-        def hgetall(self, name): return {}
-        def hset(self, name, key, value): return True
-        def lpush(self, name, *values): return True
-        def ping(self): return True
-    r = DummyRedis()
+r = redis.StrictRedis(host=hostname,
+                      port=portnumber,
+                      password=password)
 
 #Retrieve Data from Redis Database
+
 def retrieve_data(name):
-    try:
-        retrive_dict = r.hgetall(name)
-        
-        # Kiểm tra nếu Redis database trống
-        if not retrive_dict:
-            # Trả về DataFrame trống với cấu trúc đúng
-            return pd.DataFrame(columns=['Name', 'Role', 'facial_features'])
-        
-        retrive_series = pd.Series(retrive_dict)
-        retrive_series = retrive_series.apply(lambda x: np.frombuffer(x, dtype=np.float32))
-        index = retrive_series.index
-        index = list(map(lambda x: x.decode(), index))
-        retrive_series.index = index
-        retrive_df = retrive_series.to_frame().reset_index()
-        retrive_df.columns = ['name_role','facial_features']
-        retrive_df[['Name', 'Role']]= retrive_df['name_role'].apply(lambda x: x.split('@')).apply(pd.Series)
-        return retrive_df[['Name', 'Role', 'facial_features']]
-    except Exception as e:
-        print(f"Error retrieving data: {e}")
-        # Return demo data
-        demo_data = pd.DataFrame({
-            'Name': ['Demo User', 'Test Person'],
-            'Role': ['Student', 'Teacher'], 
-            'facial_features': [np.random.random(512).astype(np.float32) for _ in range(2)]
-        })
-        return demo_data
-
-# Smart model loading with background download
-DEMO_MODE = "STREAMLIT_SHARING" in os.environ or "STREAMLIT_CLOUD" in os.environ
-
-# Global variables for model loading
-faceapp = None
-model_loading = False
-model_loaded = False
-
-def load_model_background():
-    """Background model loading to avoid blocking UI"""
-    global faceapp, model_loading, model_loaded
+    retrive_dict = r.hgetall(name)
     
-    if model_loading or model_loaded:
-        return
-        
-    model_loading = True
-    print("🔄 Starting background model download...")
+    # Kiểm tra nếu Redis database trống
+    if not retrive_dict:
+        # Trả về DataFrame trống với cấu trúc đúng
+        return pd.DataFrame(columns=['Name', 'Role', 'facial_features'])
     
-    try:
-        if INSIGHTFACE_AVAILABLE:
-            # Try to load with minimal configuration
-            faceapp = FaceAnalysis(
-                name='buffalo_sc',
-                providers=['CPUExecutionProvider']
-            )
-            # Prepare with minimal settings for faster loading
-            faceapp.prepare(ctx_id=0, det_size=(320, 320), det_thresh=0.6)
-            model_loaded = True
-            print("✅ Face analysis model loaded successfully in background!")
-        else:
-            print("❌ InsightFace not available")
-    except Exception as e:
-        print(f"⚠️ Background model loading failed: {e}")
-        faceapp = None
-    finally:
-        model_loading = False
+    retrive_series = pd.Series(retrive_dict)
+    retrive_series = retrive_series.apply(lambda x: np.frombuffer(x, dtype=np.float32))
+    index = retrive_series.index
+    index = list(map(lambda x: x.decode(), index))
+    retrive_series.index = index
+    retrive_df = retrive_series.to_frame().reset_index()
+    retrive_df.columns = ['name_role','facial_features']
+    retrive_df[['Name', 'Role']]= retrive_df['name_role'].apply(lambda x: x.split('@')).apply(pd.Series)
+    return retrive_df[['Name', 'Role', 'facial_features']]
 
-def get_face_app():
-    """Get face app with lazy loading"""
-    global faceapp, model_loaded
-    
-    if not model_loaded and not model_loading:
-        # Start background loading if not started
-        thread = threading.Thread(target=load_model_background, daemon=True)
-        thread.start()
-        
-    return faceapp
+def delete_user_from_redis(name, role):
+    """Xóa user khỏi Redis database"""
+    key = f"{name}@{role}"
+    result = r.hdel('academy:register', key)
+    return result > 0
 
-# Initialize model loading in background for cloud deployment
-if DEMO_MODE and INSIGHTFACE_AVAILABLE:
-    # Start background download immediately but don't block
-    thread = threading.Thread(target=load_model_background, daemon=True)
-    thread.start()
-    print("🚀 Started background model loading for Streamlit Cloud")
-elif not DEMO_MODE:
-    # Local development - load immediately
-    load_model_background()
+def delete_all_users_from_redis():
+    """Xóa tất cả user khỏi Redis database"""
+    result = r.delete('academy:register')
+    return result > 0
 
-def get_model_status():
-    """Get current model loading status"""
-    if model_loaded:
-        return "✅ Ready"
-    elif model_loading:
-        return "🔄 Loading..."
-    else:
-        return "⏳ Not started"
+def get_all_registered_users():
+    """Lấy danh sách tất cả user đã đăng ký"""
+    users_dict = r.hgetall('academy:register')
+    users_list = []
+    for key in users_dict.keys():
+        key_str = key.decode('utf-8')
+        name, role = key_str.split('@')
+        users_list.append({'Name': name, 'Role': role, 'Key': key_str})
+    return users_list
+
+#configure face analysis
+faceapp = FaceAnalysis(name='buffalo_sc',
+                       root='insightface_model',
+                       providers=['CPUExecutionProvider'])
+faceapp.prepare(ctx_id=0, det_size=(640,640), det_thresh=0.5)
+
 
 #ML Search Algorithm
 def ml_search_algorithm(dataframe, feature_column, test_vector,
