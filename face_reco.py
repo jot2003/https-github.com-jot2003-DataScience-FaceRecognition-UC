@@ -222,14 +222,39 @@ class RegistrationForm:
         else:
             return 'name_false'
         
-        # Try session state first (Streamlit Cloud), then fallback to file (Local)
+        # Try to get embeddings from either source
         embeddings = None
+        source = None
         
-        # Method 1: Try session state (Streamlit Cloud)
+        # Method 1: Check session state first (works for both local and cloud)
         try:
-            if 'face_embeddings' in st.session_state and len(st.session_state.face_embeddings) > 0:
+            if hasattr(st, 'session_state') and 'face_embeddings' in st.session_state:
                 embeddings_list = st.session_state.face_embeddings
-                embeddings = np.array(embeddings_list)
+                if len(embeddings_list) > 0:
+                    embeddings = np.array(embeddings_list)
+                    source = "session_state"
+                    
+                    # Take the mean of all embeddings if multiple samples
+                    if embeddings.shape[0] > 1:
+                        embeddings = np.mean(embeddings, axis=0)
+                    else:
+                        embeddings = embeddings.flatten()
+                    
+                    # Clear session state after successful processing
+                    st.session_state.face_embeddings = []
+        except Exception as e:
+            print(f"Session state error: {e}")
+        
+        # Method 2: Try file (Local development backup) if session state failed
+        if embeddings is None and os.path.isfile('face_embedding.txt'):
+            try:
+                # Load embeddings from file
+                embeddings = np.loadtxt('face_embedding.txt')
+                source = "file"
+                
+                # Handle case where only one sample exists (1D array)
+                if embeddings.ndim == 1:
+                    embeddings = embeddings.reshape(1, -1)
                 
                 # Take the mean of all embeddings if multiple samples
                 if embeddings.shape[0] > 1:
@@ -237,38 +262,26 @@ class RegistrationForm:
                 else:
                     embeddings = embeddings.flatten()
                 
-                # Clear session state after successful processing
-                st.session_state.face_embeddings = []
-                
-        except:
-            pass
-        
-        # Method 2: Try file (Local development) if session state failed
-        if embeddings is None and os.path.isfile('face_embedding.txt'):
-            # Load embeddings from file
-            embeddings = np.loadtxt('face_embedding.txt')
-            
-            # Handle case where only one sample exists (1D array)
-            if embeddings.ndim == 1:
-                embeddings = embeddings.reshape(1, -1)
-            
-            # Take the mean of all embeddings if multiple samples
-            if embeddings.shape[0] > 1:
-                embeddings = np.mean(embeddings, axis=0)
-            else:
-                embeddings = embeddings.flatten()
-            
-            # Remove the file after successful processing
-            os.remove('face_embedding.txt')
+                # Remove the file after successful processing
+                os.remove('face_embedding.txt')
+            except Exception as e:
+                print(f"File loading error: {e}")
+                embeddings = None
         
         # If we have embeddings from either method, save to Redis
         if embeddings is not None:
-            # Convert embedding into bytes
-            embeddings_bytes = embeddings.tobytes()
-            
-            # Save in Redis database
-            r.hset(name='academy:register', key=key, value=embeddings_bytes)
-            
-            return True
+            try:
+                # Convert embedding into bytes
+                embeddings_bytes = embeddings.tobytes()
+                
+                # Save in Redis database
+                r.hset(name='academy:register', key=key, value=embeddings_bytes)
+                
+                print(f"✅ Successfully saved embeddings from {source} to Redis for {name}")
+                return True
+            except Exception as e:
+                print(f"Redis save error: {e}")
+                return 'file_false'
         else:
+            print("❌ No embeddings found in session state or file")
             return 'file_false'

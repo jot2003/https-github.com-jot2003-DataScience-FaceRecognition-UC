@@ -31,13 +31,14 @@ def is_streamlit_cloud():
 
 USE_SESSION_STATE = is_streamlit_cloud()
 
+# Initialize session state for face embeddings (both local and cloud for consistency)
+if 'face_embeddings' not in st.session_state:
+    st.session_state.face_embeddings = []
+
 if USE_SESSION_STATE:
     st.info("🌐 Running on Streamlit Cloud - using memory-based storage")
-    # Initialize session state for face embeddings
-    if 'face_embeddings' not in st.session_state:
-        st.session_state.face_embeddings = []
 else:
-    st.info("🏠 Running locally - using file-based storage")
+    st.info("🏠 Running locally - using hybrid storage (file + session backup)")
     # Initialize face embedding file if not exists
     if not os.path.exists('face_embedding.txt'):
         # Create empty file to ensure it exists
@@ -48,46 +49,50 @@ else:
 def video_callback_func(frame):
     img = frame.to_ndarray(format= 'bgr24') #3d array bgr
     reg_img, embedding = registration_form.get_embedding(img)
-    #two step process
-    #1st step save data into local computer txt or session state
+    
+    # Save embeddings in session state (works for both local and cloud)
     if embedding is not None:
-        if USE_SESSION_STATE:
-            # Streamlit Cloud - use session state
-            st.session_state.face_embeddings.append(embedding)
-        else:
-            # Local - use file
-            with open('face_embedding.txt', mode='ab') as f:
-                np.savetxt(f, embedding)
+        # Always save to session state for reliability
+        st.session_state.face_embeddings.append(embedding)
+        
+        # Also save to file if local environment (backup method)
+        if not USE_SESSION_STATE:
+            try:
+                with open('face_embedding.txt', mode='ab') as f:
+                    np.savetxt(f, embedding)
+            except:
+                pass  # File method failed, but session state is main method now
+    
     return av.VideoFrame.from_ndarray(reg_img, format= 'bgr24')
 
 webrtc_streamer(key='registration', video_frame_callback=video_callback_func,
                 rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
 
-# Display file status
-if USE_SESSION_STATE:
-    # Check session state
-    if 'face_embeddings' in st.session_state and len(st.session_state.face_embeddings) > 0:
-        st.success("✅ Face data captured successfully!")
-        st.info(f"📊 Number of samples collected: {len(st.session_state.face_embeddings)}")
-    else:
-        st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
+# Display status - Always check session state first
+num_samples = len(st.session_state.face_embeddings) if 'face_embeddings' in st.session_state else 0
+
+if num_samples > 0:
+    st.success("✅ Face data captured successfully!")
+    st.info(f"📊 Number of samples collected: {num_samples}")
+    
+    # Debug info for cloud
+    if USE_SESSION_STATE:
+        st.info(f"🔍 Session state embeddings shape: {np.array(st.session_state.face_embeddings).shape}")
 else:
-    # Check file
-    if os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0:
-        st.success("✅ Face data captured successfully!")
-        
-        # Show number of samples
-        try:
-            embeddings = np.loadtxt('face_embedding.txt')
-            if embeddings.ndim == 1:
-                num_samples = 1
-            else:
-                num_samples = embeddings.shape[0]
-            st.info(f"📊 Number of samples collected: {num_samples}")
-        except:
-            st.warning("⚠️ Face embedding file exists but may be empty. Continue capturing faces.")
-    else:
-        st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
+    st.warning("⚠️ No face data captured yet. Please look at the camera to capture your face.")
+    
+    # Additional check for local file as backup
+    if not USE_SESSION_STATE and os.path.exists('face_embedding.txt') and os.path.getsize('face_embedding.txt') > 0:
+        st.info("📁 File-based data detected as backup")
+
+# Debug information
+with st.expander("🔍 Debug Information"):
+    st.write(f"Environment: {'Streamlit Cloud' if USE_SESSION_STATE else 'Local'}")
+    st.write(f"Session state exists: {'face_embeddings' in st.session_state}")
+    st.write(f"Session state length: {len(st.session_state.face_embeddings) if 'face_embeddings' in st.session_state else 0}")
+    if not USE_SESSION_STATE:
+        st.write(f"File exists: {os.path.exists('face_embedding.txt')}")
+        st.write(f"File size: {os.path.getsize('face_embedding.txt') if os.path.exists('face_embedding.txt') else 0}")
 
 #step 3: Save the data in redis database
 
@@ -102,12 +107,13 @@ if st.button('Submit'):
 
 # Reset button
 if st.button('Reset Samples'):
-    if USE_SESSION_STATE:
-        if 'face_embeddings' in st.session_state:
-            st.session_state.face_embeddings = []
-    else:
-        if os.path.exists('face_embedding.txt'):
-            os.remove('face_embedding.txt')
+    # Clear session state
+    st.session_state.face_embeddings = []
+    
+    # Clear file if local
+    if not USE_SESSION_STATE and os.path.exists('face_embedding.txt'):
+        os.remove('face_embedding.txt')
+    
     registration_form.reset()
     st.rerun()
 
