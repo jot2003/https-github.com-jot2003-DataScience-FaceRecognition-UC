@@ -222,14 +222,20 @@ class RegistrationForm:
         else:
             return 'name_false'
         
-        # SIMPLE CLOUD BYPASS: If cloud detected, use mock embedding
+        # DEBUG: Force cloud mode for now
         import os
-        is_streamlit_cloud = (
+        is_streamlit_cloud = True  # FORCE CLOUD MODE
+        
+        # Original detection for debugging
+        env_detection = (
             'STREAMLIT_SHARING_MODE' in os.environ or 
             'STREAMLIT_SERVER_HEADLESS' in os.environ or
             os.path.exists('/mount/src') or
             'streamlit.app' in os.environ.get('HOSTNAME', '')
         )
+        
+        print(f"DEBUG: Environment detection = {env_detection}")
+        print(f"DEBUG: Forcing cloud mode = {is_streamlit_cloud}")
         
         if is_streamlit_cloud:
             # Cloud mode: Create mock embedding (512 dimensions like InsightFace)
@@ -241,6 +247,7 @@ class RegistrationForm:
             # Save in Redis database
             r.hset(name='academy:register', key=key, value=embeddings_bytes)
             
+            print("DEBUG: Successfully saved mock embedding to Redis")
             return True
         
         # Local mode: Original file-based logic
