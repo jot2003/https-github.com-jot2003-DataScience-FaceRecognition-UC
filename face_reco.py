@@ -222,11 +222,28 @@ class RegistrationForm:
         else:
             return 'name_false'
         
-        # SMART FALLBACK: Check both file and session_state
+        # ULTRA SMART FALLBACK: Check global, file, and session_state
         embeddings = None
         
+        # Method 0: Check global variable first (most reliable for WebRTC)
+        try:
+            import __main__
+            if hasattr(__main__, 'global_embeddings') and len(__main__.global_embeddings) > 0:
+                embeddings_list = __main__.global_embeddings
+                
+                if len(embeddings_list) == 1:
+                    embeddings = embeddings_list[0]
+                else:
+                    # Take mean of multiple samples
+                    embeddings = np.mean(embeddings_list, axis=0)
+                
+                # Clear global after use
+                __main__.global_embeddings = []
+        except:
+            pass
+        
         # Method 1: Try to load from file (original logic)
-        if os.path.isfile('face_embedding.txt'):
+        if embeddings is None and os.path.isfile('face_embedding.txt'):
             try:
                 embeddings = np.loadtxt('face_embedding.txt')
                 
@@ -260,7 +277,7 @@ class RegistrationForm:
                 # Clear session state after use
                 st.session_state['embeddings_list'] = []
         
-        # ULTRA SMART: Only fail if BOTH methods have no data
+        # ULTRA SMART: Only fail if ALL methods have no data
         if embeddings is not None:
             # Convert embedding into bytes
             embeddings_bytes = embeddings.tobytes()
@@ -270,9 +287,18 @@ class RegistrationForm:
             
             return True
         else:
-            # Check one more time if we have session data but failed to process
+            # Check one more time if we have any data source
             import streamlit as st
-            if ('embeddings_list' in st.session_state and len(st.session_state['embeddings_list']) > 0) or os.path.isfile('face_embedding.txt'):
+            try:
+                import __main__
+                has_global = hasattr(__main__, 'global_embeddings') and len(__main__.global_embeddings) > 0
+            except:
+                has_global = False
+                
+            has_session = 'embeddings_list' in st.session_state and len(st.session_state['embeddings_list']) > 0
+            has_file = os.path.isfile('face_embedding.txt')
+            
+            if has_global or has_session or has_file:
                 return 'processing_error'  # Different error for debugging
             else:
                 return 'file_false'
