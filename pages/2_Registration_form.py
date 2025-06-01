@@ -18,24 +18,38 @@ person_name = st.text_input(label='Name',placeholder='First & Last Name')
 role = st.selectbox(label='Select your role', options=('Student',
                                                         'Teacher'))
 
-# SMART FALLBACK: Initialize both file and session_state
-# Try to create file, if fails use session_state as backup
-try:
-    if not os.path.exists('face_embedding.txt'):
-        with open('face_embedding.txt', 'w') as f:
-            pass
-    # Test write permission
-    with open('face_embedding.txt', 'a') as f:
-        pass
-    st.session_state['use_file'] = True
-except:
-    # Cloud doesn't support file operations, use session_state
-    st.session_state['use_file'] = False
+# ULTRA SMART CLOUD DETECTION: Check environment instead of file operations
+# Streamlit Cloud can create files but they don't persist across requests
 
-# Force session_state mode on cloud (detected by lack of local file system)
-if not st.session_state.get('use_file', True):
+# Detect Streamlit Cloud environment
+is_streamlit_cloud = (
+    'STREAMLIT_SHARING_MODE' in os.environ or 
+    'STREAMLIT_SERVER_HEADLESS' in os.environ or
+    os.path.exists('/mount/src') or  # Streamlit Cloud file structure
+    'streamlit.app' in os.environ.get('HOSTNAME', '')
+)
+
+if is_streamlit_cloud:
+    # Force session_state mode on cloud
+    st.session_state['use_file'] = False
     if 'embeddings_list' not in st.session_state:
         st.session_state['embeddings_list'] = []
+    st.info("🌐 Detected Streamlit Cloud - Using session storage mode")
+else:
+    # Local environment - use file system
+    try:
+        if not os.path.exists('face_embedding.txt'):
+            with open('face_embedding.txt', 'w') as f:
+                pass
+        # Test write permission
+        with open('face_embedding.txt', 'a') as f:
+            pass
+        st.session_state['use_file'] = True
+    except:
+        # Fallback to session_state if file operations fail
+        st.session_state['use_file'] = False
+        if 'embeddings_list' not in st.session_state:
+            st.session_state['embeddings_list'] = []
 
 #step 2: Collect facial embedding of the person
 def video_callback_func(frame):
