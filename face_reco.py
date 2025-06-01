@@ -222,66 +222,50 @@ class RegistrationForm:
         else:
             return 'name_false'
         
-        # Try to get embeddings from either source
-        embeddings = None
-        source = None
-        
-        # Method 1: Check session state first (works for both local and cloud)
-        try:
-            if hasattr(st, 'session_state') and 'face_embeddings' in st.session_state:
-                embeddings_list = st.session_state.face_embeddings
-                if len(embeddings_list) > 0:
-                    embeddings = np.array(embeddings_list)
-                    source = "session_state"
-                    
-                    # Take the mean of all embeddings if multiple samples
-                    if embeddings.shape[0] > 1:
-                        embeddings = np.mean(embeddings, axis=0)
-                    else:
-                        embeddings = embeddings.flatten()
-                    
-                    # Clear session state after successful processing
-                    st.session_state.face_embeddings = []
-        except Exception as e:
-            print(f"Session state error: {e}")
-        
-        # Method 2: Try file (Local development backup) if session state failed
-        if embeddings is None and os.path.isfile('face_embedding.txt'):
+        # Virtual File System - Check if we're on cloud
+        def is_cloud():
             try:
-                # Load embeddings from file
-                embeddings = np.loadtxt('face_embedding.txt')
-                source = "file"
-                
-                # Handle case where only one sample exists (1D array)
-                if embeddings.ndim == 1:
-                    embeddings = embeddings.reshape(1, -1)
-                
-                # Take the mean of all embeddings if multiple samples
-                if embeddings.shape[0] > 1:
-                    embeddings = np.mean(embeddings, axis=0)
-                else:
-                    embeddings = embeddings.flatten()
-                
-                # Remove the file after successful processing
-                os.remove('face_embedding.txt')
-            except Exception as e:
-                print(f"File loading error: {e}")
-                embeddings = None
-        
-        # If we have embeddings from either method, save to Redis
-        if embeddings is not None:
-            try:
-                # Convert embedding into bytes
-                embeddings_bytes = embeddings.tobytes()
-                
-                # Save in Redis database
-                r.hset(name='academy:register', key=key, value=embeddings_bytes)
-                
-                print(f"✅ Successfully saved embeddings from {source} to Redis for {name}")
+                with open('test_permissions.tmp', 'w') as f:
+                    f.write('test')
+                os.remove('test_permissions.tmp')
+                return False
+            except:
                 return True
-            except Exception as e:
-                print(f"Redis save error: {e}")
-                return 'file_false'
+        
+        # Read embeddings using virtual file system
+        embeddings = None
+        
+        if is_cloud():
+            # Cloud: Read from session state (virtual file)
+            if 'virtual_file_content' in st.session_state and len(st.session_state.virtual_file_content) > 0:
+                embeddings = np.array(st.session_state.virtual_file_content)
+                # Clear virtual file after reading
+                del st.session_state.virtual_file_content
         else:
-            print("❌ No embeddings found in session state or file")
+            # Local: Read from real file
+            if os.path.isfile('face_embedding.txt'):
+                embeddings = np.loadtxt('face_embedding.txt')
+                # Remove real file after reading
+                os.remove('face_embedding.txt')
+        
+        # Process embeddings (same logic for both cloud and local)
+        if embeddings is not None:
+            # Handle case where only one sample exists (1D array)
+            if embeddings.ndim == 1:
+                embeddings = embeddings.reshape(1, -1)
+            
+            # Take the mean of all embeddings if multiple samples
+            if embeddings.shape[0] > 1:
+                embeddings = np.mean(embeddings, axis=0)
+            else:
+                embeddings = embeddings.flatten()
+            
+            # Convert embedding into bytes
+            embeddings_bytes = embeddings.tobytes()
+            
+            # Save in Redis database
+            r.hset(name='academy:register', key=key, value=embeddings_bytes)
+            
+            return True
+        else:
             return 'file_false'
