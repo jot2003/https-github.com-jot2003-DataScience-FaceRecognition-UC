@@ -95,6 +95,9 @@ def ml_search_algorithm(dataframe, feature_column, test_vector,
     # Step 1: Take the dataframe (collection of data)
     dataframe = dataframe.copy()
 
+    # Check if dataframe is empty
+    if dataframe.empty:
+        return 'Unknown', 'Unknown'
 
     # Step 2: Index face embeding from the dataframe and convert into array
     X_list = dataframe[feature_column].tolist()
@@ -118,229 +121,99 @@ def ml_search_algorithm(dataframe, feature_column, test_vector,
 
     return person_name, person_role
 
-# ###Real time prediction
-# #Target: save logs for every minute
-# class RealTimePred:
-#     def __init__(self):
-#         self.logs = dict(name=[], role=[], current_time=[])
-    
-#     def reset_dict(self):
-#         self.logs = dict(name=[], role=[], current_time=[])
-
-#     def saveLogs_redis(self):
-#         #step 1: create a logs dataframe
-#         dataframe = pd.DataFrame(self.logs)
-#         #step 2: drop the duplicate infomation (distinct name)
-#         dataframe.drop_duplicates('name',inplace=True)
-#         #step 3: push data to redis database (list)
-#         #encode the data
-#         name_list = dataframe['name'].tolist()
-#         role_list = dataframe['role'].tolist()
-#         ctime_list = dataframe['current_time'].tolist()
-#         encoded_data = []
-
-#         for name, role, ctime in zip(name_list,role_list, ctime_list):
-#             if name != 'Unknown':
-#                 concat_string = f"{name}@{role}@{ctime}"
-#                 encoded_data.append(concat_string)
-        
-#         if len(encoded_data) >0:
-#             r.lpush('attendance:logs',*encoded_data)
-
-#         self.reset_dict()
-
-
-
-#     def face_prediction(self,test_image, dataframe, feature_column,
-#                             name_role=['Name', 'Role'], thresh=0.5 ):
-#         #step 1: find the time
-#         current_time = str(datetime.now())
-        
-#         #step 1 take the test image and apply to insight face
-#         results = faceapp.get(test_image)
-#         test_copy = test_image.copy()
-        
-#         #step 2: use for loop and extract each embedding and pass to ml_search_algorithm
-#         for res in results:
-#             x1, y1, x2, y2 = res['bbox'].astype(int)
-#             embeddings = res['embedding']
-#             person_name, person_role = ml_search_algorithm(dataframe, feature_column, 
-#                                                         test_vector = embeddings, 
-#                                                         name_role=name_role,
-#                                                         thresh=thresh)
-#             # print(person_name, person_role)
-#             if person_name == 'Unknown':
-#                 color = (0,0,255) 
-#             else:
-#                 color = (0,255,0)
-            
-#             cv2.rectangle(test_copy, (x1,y1), (x2, y2), color)
-#             text_gen =  person_name
-#             cv2.putText(test_copy,text_gen,(x1,y1), cv2.FONT_HERSHEY_DUPLEX, 0.7, color, 2)
-#             cv2.putText(test_copy,current_time, (x1,y2+10), cv2.FONT_HERSHEY_DUPLEX, 0.7, color, 2)
-#             #save info in logs dict
-#             self.logs['name'].append(person_name)
-#             self.logs['role'].append(person_role)
-#             self.logs['current_time'].append(current_time)   
-    
-#         return test_copy
-
-
-# #### Registration form
-# class RegistrationForm:
-#     def __init__(self):
-#         self.sample = 0
-#     def reset(self):
-#         self.sample = 0
-#     def get_embedding(self,frame):
-#         #get result from insightface model
-#         results = faceapp.get(frame, max_num=1)
-#         embeddings = None
-#         for res in results:
-#             self.sample += 1
-#             x1, y1, x2, y2 = res['bbox'].astype(int)
-#             cv2.rectangle(frame, (x1, y1), (x2,y2), (0, 255, 0), 1)
-#             #put text samples info
-#             text = f"samples={self.sample}"
-#             cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_DUPLEX,0.6,(255, 255, 0),2)
-
-#             #facial features
-#             embeddings = res['embedding']
-
-#         return frame, embeddings
-    
-#     def save_data_in_redis_db(self, name, role):
-#         #validation name
-#         if name is not None:
-#             if name.strip() != '':
-#                 key = f'{name}@{role}'
-#             else:
-#                 return 'name_false'
-#         else:
-#             return 'name_false'
-#         #if face_embedding.txt exists
-#         if 'face_embedding.txt' not in os.listdir():
-#             return 'file_false'
-
-        
-#         #step-1: load "face_embedding.txt"
-#         x_array = np.loadtxt('face_embedding.txt', dtype=np.float32) #flatten array
-
-
-#         #step-2: convert into array (proper shape)
-#         received_samples = int(x_array.size/512)
-#         x_array = x_array.reshape(received_samples, 512)
-#         x_array = np.asarray(x_array)
-
-#         #step-3: cal. mean embeddings
-#         x_mean = x_array.mean(axis=0)
-#         x_mean = x_mean.astype(np.float32)
-#         x_mean_bytes = x_mean.tobytes()
-
-#         #step-4: save this into redis database
-#         #redis hashes
-#         r.hset('academy:register', key=key, value=x_mean_bytes)
-
-#         os.remove('face_embedding.txt')
-#         self.reset()
-#         return True
-
-
-### Real Time Prediction
-# we need to save logs for every 1 mins
+###Real time prediction
+#Target: save logs for every minute
 class RealTimePred:
     def __init__(self):
-        self.logs = dict(name=[],role=[],current_time=[])
-        
+        self.logs = dict(name=[], role=[], current_time=[])
+    
     def reset_dict(self):
-        self.logs = dict(name=[],role=[],current_time=[])
-        
+        self.logs = dict(name=[], role=[], current_time=[])
+
     def saveLogs_redis(self):
-        # step-1: create a logs dataframe
-        dataframe = pd.DataFrame(self.logs)        
-        # step-2: drop the duplicate information (distinct name)
-        dataframe.drop_duplicates('name',inplace=True) 
-        # step-3: push data to redis database (list)
-        # encode the data
+        #step 1: create a logs dataframe
+        dataframe = pd.DataFrame(self.logs)
+        #step 2: drop the duplicate infomation (distinct name)
+        dataframe.drop_duplicates('name',inplace=True)
+        #step 3: push data to redis database (list)
+        #encode the data
         name_list = dataframe['name'].tolist()
         role_list = dataframe['role'].tolist()
         ctime_list = dataframe['current_time'].tolist()
         encoded_data = []
-        for name, role, ctime in zip(name_list, role_list, ctime_list):
+
+        for name, role, ctime in zip(name_list,role_list, ctime_list):
             if name != 'Unknown':
                 concat_string = f"{name}@{role}@{ctime}"
                 encoded_data.append(concat_string)
-                
+        
         if len(encoded_data) >0:
             r.lpush('attendance:logs',*encoded_data)
-        
-                    
-        self.reset_dict()     
-        
-        
-    def face_prediction(self,test_image, dataframe,feature_column,
-                            name_role=['Name','Role'],thresh=0.5):
-        # step-1: find the time
+
+        self.reset_dict()
+
+
+
+    def face_prediction(self,test_image, dataframe, feature_column,
+                            name_role=['Name', 'Role'], thresh=0.5 ):
+        #step 1: find the time
         current_time = str(datetime.now())
         
-        # step-1: take the test image and apply to insight face
+        #step 1 take the test image and apply to insight face
         results = faceapp.get(test_image)
         test_copy = test_image.copy()
-        # step-2: use for loop and extract each embedding and pass to ml_search_algorithm
-
+        
+        #step 2: use for loop and extract each embedding and pass to ml_search_algorithm
         for res in results:
             x1, y1, x2, y2 = res['bbox'].astype(int)
             embeddings = res['embedding']
-            person_name, person_role = ml_search_algorithm(dataframe,
-                                                        feature_column,
-                                                        test_vector=embeddings,
+            person_name, person_role = ml_search_algorithm(dataframe, feature_column, 
+                                                        test_vector = embeddings, 
                                                         name_role=name_role,
                                                         thresh=thresh)
+            # print(person_name, person_role)
             if person_name == 'Unknown':
-                color =(0,0,255) # bgr
+                color = (0,0,255) 
             else:
                 color = (0,255,0)
-
-            cv2.rectangle(test_copy,(x1,y1),(x2,y2),color)
-
-            text_gen = person_name
-            cv2.putText(test_copy,text_gen,(x1,y1),cv2.FONT_HERSHEY_DUPLEX,0.7,color,2)
-            cv2.putText(test_copy,current_time,(x1,y2+10),cv2.FONT_HERSHEY_DUPLEX,0.7,color,2)
-            # save info in logs dict
+            
+            cv2.rectangle(test_copy, (x1,y1), (x2, y2), color)
+            text_gen =  person_name
+            cv2.putText(test_copy,text_gen,(x1,y1), cv2.FONT_HERSHEY_DUPLEX, 0.7, color, 2)
+            cv2.putText(test_copy,current_time, (x1,y2+10), cv2.FONT_HERSHEY_DUPLEX, 0.7, color, 2)
+            #save info in logs dict
             self.logs['name'].append(person_name)
             self.logs['role'].append(person_role)
-            self.logs['current_time'].append(current_time)
-            
-
+            self.logs['current_time'].append(current_time)   
+    
         return test_copy
 
 
-#### Registration Form
+#### Registration form
 class RegistrationForm:
     def __init__(self):
         self.sample = 0
     def reset(self):
         self.sample = 0
-        
     def get_embedding(self,frame):
-        # get results from insightface model
-        results = faceapp.get(frame,max_num=1)
+        #get result from insightface model
+        results = faceapp.get(frame, max_num=1)
         embeddings = None
         for res in results:
             self.sample += 1
             x1, y1, x2, y2 = res['bbox'].astype(int)
-            cv2.rectangle(frame, (x1,y1),(x2,y2),(0,255,0),1)
-            # put text samples info
-            text = f"samples = {self.sample}"
-            cv2.putText(frame,text,(x1,y1),cv2.FONT_HERSHEY_DUPLEX,0.6,(255,255,0),2)
-            
-            # facial features
+            cv2.rectangle(frame, (x1, y1), (x2,y2), (0, 255, 0), 1)
+            #put text samples info
+            text = f"samples={self.sample}"
+            cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_DUPLEX,0.6,(255, 255, 0),2)
+
+            #facial features
             embeddings = res['embedding']
-            
+
         return frame, embeddings
     
     def save_data_in_redis_db(self,name,role):
-        # validation name
+        #validation name
         if name is not None:
             if name.strip() != '':
                 key = f'{name}@{role}'
@@ -349,30 +222,13 @@ class RegistrationForm:
         else:
             return 'name_false'
         
-        # if face_embedding.txt exists
-        if 'face_embedding.txt' not in os.listdir():
+        #validation face_embedding
+        if 'face_embedding' in st.session_state:
+            embeddings = st.session_state['face_embedding']
+            # convert embedding into array
+            embeddings_bytes = embeddings.tobytes()
+            #save in redis db
+            r.hset(name='academy:register',key=key,value=embeddings_bytes)
+            return True
+        else:
             return 'file_false'
-        
-        
-        # step-1: load "face_embedding.txt"
-        x_array = np.loadtxt('face_embedding.txt',dtype=np.float32) # flatten array            
-        
-        # step-2: convert into array (proper shape)
-        received_samples = int(x_array.size/512)
-        x_array = x_array.reshape(received_samples,512)
-        x_array = np.asarray(x_array)       
-        
-        # step-3: cal. mean embeddings
-        x_mean = x_array.mean(axis=0)
-        x_mean = x_mean.astype(np.float32)
-        x_mean_bytes = x_mean.tobytes()
-        
-        # step-4: save this into redis database
-        # redis hashes
-        r.hset(name='academy:register',key=key,value=x_mean_bytes)
-        
-        # 
-        os.remove('face_embedding.txt')
-        self.reset()
-        
-        return True
